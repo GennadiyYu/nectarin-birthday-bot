@@ -9,8 +9,8 @@
   "vars": {
     "TIME_ZONE": "Europe/Moscow",
     "REMINDER_HOUR": "9",
-    "BOT_USERNAME": "CHANGE_ME_WITHOUT_AT",
-    "OWNER_USERNAME": "CHANGE_ME_WITHOUT_AT",
+    "BOT_USERNAME": "ezhenzhe_bot",
+    "OWNER_USERNAME": "yudanov_g",
     "GEMINI_MODEL": "gemini-3.8-flash"
   },
   "triggers": {
