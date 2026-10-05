@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --test-scheduled",
-    "deploy": "npm run db:migrate:remote && wrangler deploy",
+    "deploy": "wrangler deploy && npm run db:migrate:remote",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
     "typecheck": "tsc --noEmit"
@@ -13,7 +13,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261005.1",
     "typescript": "^5.9.2",
-    "wrangler": "^4.40.0"
+    "wrangler": "4.147.0"
   },
   "cloudflare": {
     "bindings": {

@@ -22,8 +22,8 @@
     {
       "binding": "DB",
       "database_name": "nectarin-birthday-bot-db",
-      "database_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
       "migrations_dir": "migrations"
     }
-  ]
+  ],
+  "keep_vars": true
 }
