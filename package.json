@@ -1,0 +1,40 @@
+{
+  "name": "nectarin-birthday-bot",
+  "version": "0.2.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --test-scheduled",
+    "deploy": "npm run db:migrate:remote && wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261005.1",
+    "typescript": "^5.9.2",
+    "wrangler": "^4.40.0"
+  },
+  "cloudflare": {
+    "bindings": {
+      "TELEGRAM_BOT_TOKEN": {
+        "description": "Токен Telegram-бота из @BotFather. Хранится как секрет Cloudflare."
+      },
+      "GEMINI_API_KEY": {
+        "description": "API key Gemini из Google AI Studio. Можно указать позже; кнопочное управление работает и без Gemini."
+      },
+      "BOT_USERNAME": {
+        "description": "Username Telegram-бота без @, например nectarin_birthday_bot."
+      },
+      "OWNER_USERNAME": {
+        "description": "Ваш Telegram username без @. Первый /start с этого аккаунта станет владельцем бота."
+      },
+      "TIME_ZONE": {
+        "description": "Часовой пояс напоминаний. Для Москвы оставьте Europe/Moscow."
+      },
+      "REMINDER_HOUR": {
+        "description": "Локальный час отправки ежедневных напоминаний, по умолчанию 9."
+      }
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "nectarin-birthday-bot",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-05",
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "TIME_ZONE": "Europe/Moscow",
+    "REMINDER_HOUR": "9",
+    "BOT_USERNAME": "CHANGE_ME_WITHOUT_AT",
+    "OWNER_USERNAME": "CHANGE_ME_WITHOUT_AT",
+    "GEMINI_MODEL": "gemini-3.8-flash"
+  },
+  "triggers": {
+    "crons": [
+      "0 * * * *"
+    ]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "nectarin-birthday-bot-db",
+      "database_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

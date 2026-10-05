@@ -1,0 +1,11 @@
+node_modules/
+.dev.vars
+.env
+.wrangler/
+.DS_Store
+
+private-data/
+seed*.sql
+data/
+*.sqlite
+*.db
