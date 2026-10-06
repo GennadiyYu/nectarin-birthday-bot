@@ -56,10 +56,10 @@ export default {
         const bot = await checkTelegramBot(env);
         const webhook = await tgCall(env, "getWebhookInfo", {}) as { url: string; pending_update_count: number; last_error_date?: number };
         const ok = webhook.url === `${url.origin}/webhook`;
-        return Response.json({ ok, service: "nectarin-birthday-bot", version: "0.2.2", database: "ready", bot_username: bot.username, webhook_url: webhook.url, pending_updates: webhook.pending_update_count, last_delivery_error_at: webhook.last_error_date || null }, { status: ok ? 200 : 503 });
+        return Response.json({ ok, service: "nectarin-birthday-bot", version: "0.2.3", database: "ready", bot_username: bot.username, webhook_url: webhook.url, pending_updates: webhook.pending_update_count, last_delivery_error_at: webhook.last_error_date || null }, { status: ok ? 200 : 503 });
       } catch (error) {
         console.error("health check failed", error);
-        return Response.json({ ok: false, service: "nectarin-birthday-bot", version: "0.2.2", error: publicError(error) }, { status: 503 });
+        return Response.json({ ok: false, service: "nectarin-birthday-bot", version: "0.2.3", error: publicError(error) }, { status: 503 });
       }
     }
 
@@ -72,7 +72,7 @@ export default {
         const username = (env.BOT_USERNAME || "").replace(/^@/, "").trim();
         const owner = (env.OWNER_USERNAME || "").replace(/^@/, "").trim();
         const botLink = username ? `https://t.me/${username}` : "https://t.me/";
-        return new Response(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nectarin Birthday Bot</title><style>body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#0b0d10;color:#fff;display:grid;place-items:center;min-height:100vh;margin:0}.card{max-width:620px;padding:32px;border:1px solid #2a2f38;border-radius:24px;background:#14181e}.ok{font-size:52px}h1{margin:10px 0}p{color:#c7ced8;line-height:1.5}.btn{display:inline-block;margin-top:12px;padding:14px 20px;border-radius:12px;background:#fff;color:#111;text-decoration:none;font-weight:700}code{background:#222831;padding:3px 6px;border-radius:6px}</style></head><body><div class="card"><div class="ok">✅</div><h1>Бот развёрнут</h1><p>Таблицы Cloudflare D1 проверены, токен Telegram-бота подтверждён, webhook настроен. Версия 0.2.2.</p><p>Владелец: <b>@${htmlEsc(owner || "не задан")}</b></p><p>Теперь откройте Telegram-бота и нажмите <b>Start</b>. Если ваш username совпадает с владельцем выше, бот автоматически выдаст вам права владельца.</p><a class="btn" href="${htmlEsc(botLink)}">Открыть бота в Telegram</a></div></body></html>`, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+        return new Response(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nectarin Birthday Bot</title><style>body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#0b0d10;color:#fff;display:grid;place-items:center;min-height:100vh;margin:0}.card{max-width:620px;padding:32px;border:1px solid #2a2f38;border-radius:24px;background:#14181e}.ok{font-size:52px}h1{margin:10px 0}p{color:#c7ced8;line-height:1.5}.btn{display:inline-block;margin-top:12px;padding:14px 20px;border-radius:12px;background:#fff;color:#111;text-decoration:none;font-weight:700}code{background:#222831;padding:3px 6px;border-radius:6px}</style></head><body><div class="card"><div class="ok">✅</div><h1>Бот развёрнут</h1><p>Таблицы Cloudflare D1 проверены, токен Telegram-бота подтверждён, webhook настроен. Версия 0.2.3.</p><p>Владелец: <b>@${htmlEsc(owner || "не задан")}</b></p><p>Теперь откройте Telegram-бота и нажмите <b>Start</b>. Если ваш username совпадает с владельцем выше, бот автоматически выдаст вам права владельца.</p><a class="btn" href="${htmlEsc(botLink)}">Открыть бота в Telegram</a></div></body></html>`, { headers: { "Content-Type": "text/html; charset=utf-8" } });
       } catch (error) {
         console.error("bootstrap failed", error);
         return new Response(`Ошибка запуска: ${publicError(error)}`, { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } });
@@ -226,6 +226,11 @@ async function handleMessage(message: TgMessage, env: Env): Promise<void> {
 
   if (!(await isAdmin(user.id, env))) {
     await tgSend(env, chatId, "Команды управления доступны администраторам. Если вы сотрудник — дождитесь сообщений по сборам.");
+    return;
+  }
+
+  if (text === "/gemini") {
+    await handleAiMessage("Ответь одним словом: работает", chatId, user.id, env, true);
     return;
   }
 
@@ -836,7 +841,7 @@ async function sendOnce(env: Env, kind: string, personType: string, personId: nu
   }
 }
 
-async function handleAiMessage(text: string, chatId: number, adminId: number, env: Env): Promise<void> {
+async function handleAiMessage(text: string, chatId: number, adminId: number, env: Env, diagnostic = false): Promise<void> {
   if (!text) return;
   if (!env.GEMINI_API_KEY) {
     await tgSend(env, chatId, "Gemini пока не подключён. Используйте кнопки меню или добавьте секрет GEMINI_API_KEY.", keyboard([[{ text: "⬅️ Меню", callback_data: "main" }]]));
@@ -901,28 +906,75 @@ async function handleAiMessage(text: string, chatId: number, adminId: number, en
     "Если данных недостаточно, просто задай уточняющий вопрос текстом. Удаление только через request_remove_* и подтверждение интерфейсом.\n\n" +
     `Сообщение администратора: ${text}`;
 
+  const model = env.GEMINI_MODEL || "gemini-3.8-flash";
   try {
     const response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
       method: "POST",
+      signal: AbortSignal.timeout(20000),
       headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
-      body: JSON.stringify({ model: env.GEMINI_MODEL || "gemini-3.8-flash", input: prompt, store: false, tools }),
+      body: JSON.stringify({ model, input: prompt, store: false, tools }),
     });
     if (!response.ok) {
-      console.error("Gemini error", response.status, await response.text());
-      await tgSend(env, chatId, "Gemini сейчас не ответил. Кнопочное управление продолжает работать.");
+      const body = await response.text();
+      const failure = describeGeminiFailure(response.status, body);
+      console.error("Gemini request rejected", { http_status: response.status, category: failure.category });
+      await tgSend(env, chatId, `⚠️ <b>Gemini: ${esc(failure.category)}</b>\n${esc(failure.message)}\n\nHTTP ${response.status} · модель ${esc(model)}\nКнопочное управление продолжает работать.`);
       return;
     }
     const json = await response.json() as { output_text?: string; steps?: Array<{ type: string; name?: string; arguments?: Record<string, unknown> }> };
     const fc = json.steps?.find(s => s.type === "function_call" && s.name);
     if (!fc?.name) {
+      if (diagnostic) {
+        if (!json.output_text?.trim()) {
+          await tgSend(env, chatId, `⚠️ Google принял запрос, но текстовый ответ пуст. Модель: ${esc(model)}.`);
+          return;
+        }
+        await tgSend(env, chatId, `✅ Gemini работает: получен ответ Google.\nМодель: ${esc(model)}.`);
+        return;
+      }
       await tgSend(env, chatId, esc(json.output_text || "Не понял команду. Попробуйте сформулировать иначе."));
+      return;
+    }
+    if (diagnostic) {
+      await tgSend(env, chatId, `⚠️ Google вернул вызов функции вместо тестового текста. Модель: ${esc(model)}. Изменения базы не выполнялись.`);
       return;
     }
     await executeAiTool(fc.name, fc.arguments || {}, chatId, adminId, env);
   } catch (error) {
-    console.error("Gemini call failed", error);
-    await tgSend(env, chatId, "Не удалось обратиться к Gemini. Используйте меню — база и напоминания от Gemini не зависят.");
+    const timeout = error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name);
+    console.error("Gemini call failed", { category: timeout ? "timeout" : "request_or_processing_failed" });
+    await tgSend(env, chatId, timeout ? "⚠️ Gemini не ответил за 20 секунд. Повторите запрос немного позже. Кнопочное меню работает." : "⚠️ Сбой запроса или обработки ответа Gemini. Кнопочное меню работает. Для проверки подключения отправьте /gemini.");
   }
+}
+
+function describeGeminiFailure(status: number, body: string): { category: string; message: string } {
+  // Inspect the provider response without exposing it, prompts, or credentials in Telegram or logs.
+  const lower = body.toLowerCase();
+  if (/location.*not supported|region.*not supported|unsupported.*(country|region|location)/.test(lower)) {
+    return { category: "ограничение региона", message: "Google сообщает, что Gemini API недоступен для текущего региона запроса. Проверьте условия доступности проекта Google AI Studio." };
+  }
+  if (/api.?key.*(invalid|expired|not valid)|api_key_invalid|key.*(revoked|leaked)/.test(lower) || status === 401) {
+    return { category: "ошибка ключа", message: "Google отклонил API-ключ. Проверьте GEMINI_API_KEY в Settings → Variables and Secrets у Worker." };
+  }
+  if (/billing|payment|free tier.*not available/.test(lower)) {
+    return { category: "требуется настройка проекта", message: "Google сообщает об ограничении тарифа или оплаты. Проверьте тариф и биллинг проекта в Google AI Studio." };
+  }
+  if (status === 429 || /resource_exhausted|quota.*exceed/.test(lower)) {
+    return { category: "лимит запросов", message: "Google сообщает о превышении квоты. Проверьте лимиты проекта в Google AI Studio; доступная квота зависит от модели и тарифа." };
+  }
+  if (status === 403) {
+    return { category: "нет доступа", message: "Google запретил запрос. Проверьте ограничения ключа, разрешённые API и доступ проекта к выбранной модели." };
+  }
+  if (status === 404 || /model.*(not found|not supported|does not exist|unavailable)/.test(lower)) {
+    return { category: "модель недоступна", message: "Google не нашёл выбранную модель или метод для этого проекта. Проверьте GEMINI_MODEL и список доступных моделей." };
+  }
+  if (status === 400) {
+    return { category: "параметры запроса отклонены", message: "Google не принял параметры запроса. Нужна проверка формата запроса и возможностей выбранной модели." };
+  }
+  if (status >= 500) {
+    return { category: "сбой Google", message: "Сервис Google вернул серверную ошибку. Повторите запрос немного позже." };
+  }
+  return { category: "запрос отклонён", message: "Google отклонил запрос. Код HTTP ниже поможет определить причину." };
 }
 
 async function executeAiTool(name: string, args: Record<string, unknown>, chatId: number, _adminId: number, env: Env): Promise<void> {
