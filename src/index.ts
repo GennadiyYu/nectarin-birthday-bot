@@ -1,3 +1,5 @@
+import initialSchema from "../migrations/0001_schema.sql";
+
 interface Env {
   DB: D1Database;
   TELEGRAM_BOT_TOKEN: string;
@@ -49,11 +51,22 @@ export default {
     const url = new URL(request.url);
 
     if (request.method === "GET" && url.pathname === "/health") {
-      return Response.json({ ok: true, service: "nectarin-birthday-bot" });
+      try {
+        await checkDatabase(env);
+        const bot = await checkTelegramBot(env);
+        const webhook = await tgCall(env, "getWebhookInfo", {}) as { url: string; pending_update_count: number; last_error_date?: number };
+        const ok = webhook.url === `${url.origin}/webhook`;
+        return Response.json({ ok, service: "nectarin-birthday-bot", version: "0.2.2", database: "ready", bot_username: bot.username, webhook_url: webhook.url, pending_updates: webhook.pending_update_count, last_delivery_error_at: webhook.last_error_date || null }, { status: ok ? 200 : 503 });
+      } catch (error) {
+        console.error("health check failed", error);
+        return Response.json({ ok: false, service: "nectarin-birthday-bot", version: "0.2.2", error: publicError(error) }, { status: 503 });
+      }
     }
 
     if (request.method === "GET" && url.pathname === "/") {
       try {
+        await ensureDatabase(env);
+        await checkTelegramBot(env);
         const webhookUrl = `${url.origin}/webhook`;
         await ensureTelegramWebhook(env, webhookUrl);
         const username = (env.BOT_USERNAME || "").replace(/^@/, "").trim();
@@ -62,7 +75,7 @@ export default {
         return new Response(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nectarin Birthday Bot</title><style>body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#0b0d10;color:#fff;display:grid;place-items:center;min-height:100vh;margin:0}.card{max-width:620px;padding:32px;border:1px solid #2a2f38;border-radius:24px;background:#14181e}.ok{font-size:52px}h1{margin:10px 0}p{color:#c7ced8;line-height:1.5}.btn{display:inline-block;margin-top:12px;padding:14px 20px;border-radius:12px;background:#fff;color:#111;text-decoration:none;font-weight:700}code{background:#222831;padding:3px 6px;border-radius:6px}</style></head><body><div class="card"><div class="ok">✅</div><h1>Бот развёрнут</h1><p>Cloudflare D1 подключена, миграции применены, Telegram webhook настроен автоматически.</p><p>Владелец: <b>@${htmlEsc(owner || "не задан")}</b></p><p>Теперь откройте Telegram-бота и нажмите <b>Start</b>. Если ваш username совпадает с владельцем выше, бот автоматически выдаст вам права владельца.</p><a class="btn" href="${htmlEsc(botLink)}">Открыть бота в Telegram</a></div></body></html>`, { headers: { "Content-Type": "text/html; charset=utf-8" } });
       } catch (error) {
         console.error("bootstrap failed", error);
-        return new Response(`Bootstrap error: ${String(error)}`, { status: 500 });
+        return new Response(`Ошибка запуска: ${publicError(error)}`, { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } });
       }
     }
 
@@ -74,9 +87,20 @@ export default {
       }
       const update = (await request.json()) as TgUpdate;
       try {
+        await ensureDatabase(env);
         await handleUpdate(update, env);
       } catch (error) {
         console.error("handleUpdate failed", error);
+        const chat = update.message?.chat || update.callback_query?.message?.chat;
+        if (chat?.type === "private") {
+          try {
+            await tgSend(env, chat.id, "⚠️ Не удалось обработать сообщение. Администратору нужно проверить страницу запуска бота. После исправления отправьте /start ещё раз.");
+          } catch {
+            return new Response("Processing failed", { status: 503 });
+          }
+        } else {
+          return new Response("Processing failed", { status: 503 });
+        }
       }
       return new Response("OK");
     }
@@ -88,9 +112,59 @@ export default {
     const now = zonedParts(new Date(), env.TIME_ZONE || "Europe/Moscow");
     const reminderHour = Number(env.REMINDER_HOUR || "9");
     if (now.hour !== reminderHour) return;
+    await ensureDatabase(env);
     await runBirthdayReminders(env);
   },
 } satisfies ExportedHandler<Env>;
+
+const requiredTables = ["admins", "units", "employees", "clients", "sessions", "collections", "collection_responses", "notification_log"];
+const databaseReady = new WeakMap<D1Database, Promise<void>>();
+
+async function checkDatabase(env: Env): Promise<void> {
+  if (!env.DB) throw new Error("DATABASE_BINDING_MISSING");
+  const result = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table'").all<{ name: string }>();
+  const names = new Set(result.results.map(row => row.name));
+  if (requiredTables.some(name => !names.has(name))) throw new Error("DATABASE_SCHEMA_MISSING");
+}
+
+async function ensureDatabase(env: Env): Promise<void> {
+  if (!env.DB) throw new Error("DATABASE_BINDING_MISSING");
+  let ready = databaseReady.get(env.DB);
+  if (!ready) {
+    ready = (async () => {
+      try {
+        await checkDatabase(env);
+      } catch (error) {
+        if (!(error instanceof Error) || error.message !== "DATABASE_SCHEMA_MISSING") throw error;
+        // Only the bundled initial migration: it uses CREATE IF NOT EXISTS and INSERT OR IGNORE.
+        const statements = initialSchema.split(";").map(sql => sql.trim()).filter(sql => sql && !/^PRAGMA\b/i.test(sql));
+        await env.DB.batch(statements.map(sql => env.DB.prepare(sql)));
+        await checkDatabase(env);
+      }
+    })();
+    databaseReady.set(env.DB, ready);
+  }
+  try { await ready; } catch (error) { databaseReady.delete(env.DB); throw error; }
+}
+
+async function checkTelegramBot(env: Env): Promise<{ username: string }> {
+  if (!env.TELEGRAM_BOT_TOKEN) throw new Error("TELEGRAM_TOKEN_MISSING");
+  const bot = await tgCall(env, "getMe", {}) as { username: string };
+  const expected = (env.BOT_USERNAME || "").replace(/^@/, "").trim().toLowerCase();
+  if (expected && bot.username.toLowerCase() !== expected) throw new Error("TELEGRAM_BOT_MISMATCH");
+  return bot;
+}
+
+function publicError(error: unknown): string {
+  const code = error instanceof Error ? error.message : "";
+  const messages: Record<string, string> = {
+    DATABASE_BINDING_MISSING: "Не подключена база D1: требуется привязка DB.",
+    DATABASE_SCHEMA_MISSING: "В базе отсутствуют таблицы. Откройте главную страницу Worker для их создания.",
+    TELEGRAM_TOKEN_MISSING: "Добавьте TELEGRAM_BOT_TOKEN в секреты Worker.",
+    TELEGRAM_BOT_MISMATCH: "Токен принадлежит другому боту. Проверьте TELEGRAM_BOT_TOKEN и BOT_USERNAME.",
+  };
+  return messages[code] || "Проверка не пройдена. Подробности доступны в журнале Worker в Cloudflare.";
+}
 
 async function handleUpdate(update: TgUpdate, env: Env): Promise<void> {
   if (update.callback_query) {

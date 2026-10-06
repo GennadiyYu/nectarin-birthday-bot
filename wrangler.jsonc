@@ -2,6 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "nectarin-birthday-bot",
   "main": "src/index.ts",
+  "rules": [{ "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }],
   "compatibility_date": "2026-10-05",
   "observability": {
     "enabled": true
